@@ -13,7 +13,7 @@ https://github.com/zoho/zoho-payments-woocommerce-extension/releases/latest
 On the release page, download the attached plugin ZIP asset named:
 
 ```text
-zoho-payments-woocommerce-v1.0.0.zip
+zoho-payments-woocommerce-v1.0.1.zip
 ```
 
 ## Overview
@@ -22,7 +22,7 @@ Zoho Payments for WooCommerce adds Zoho Payments as a payment gateway in your Wo
 
 ## Plugin Details
 
-- Version: `1.0.0`
+- Version: `1.0.1`
 - Requires WordPress: `5.8` or later
 - Tested up to WordPress: `6.5`
 
@@ -84,6 +84,10 @@ Copy the webhook signing key from Zoho Payments and save it in the plugin settin
 
 ## Changelog
 
+### 1.0.1
+
+- Updated webhook payment amount validation to use the payment object's `net_amount`.
+
 ### 1.0.0
 
 Initial stable release.
@@ -99,6 +103,10 @@ Initial stable release.
 - Added configurable checkout title, description, business name, and business description.
 
 ## Upgrade Notice
+
+### 1.0.1
+
+Webhook payment amount validation now uses `net_amount` from Zoho Payments.
 
 ### 1.0.0
 

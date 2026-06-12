@@ -3,7 +3,7 @@
 Plugin Name: Zoho Payments
 Plugin URI: https://www.zoho.com/in/payments/
 Description: Zoho Payments Plugin for Woo Commerce.
-Version: 1.0.0
+Version: 1.0.1
 Author: ZPay
 Author URI: https://www.zoho.com/in/payments/
 Copyright: © 2024, Zoho Pay. All rights reserved.
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define constants
-define('ZOHO_PAYMENT_GATEWAY_VERSION', '1.0.0');
+define('ZOHO_PAYMENT_GATEWAY_VERSION', '1.0.1');
 define('ZOHO_PAYMENT_GATEWAY_PLUGIN_PATH', plugin_dir_path(__FILE__));
 define('ZOHO_PAYMENT_GATEWAY_DOMAIN', 'woocommerce-gateway-zoho');
 

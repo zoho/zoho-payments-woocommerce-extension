@@ -168,7 +168,7 @@ if (!function_exists('zpay_webhook_handler')) {
         }
 
         $payment_id = $payment['payment_id'] ?? '';
-        $amount = $payment['amount'] ?? '';
+        $amount = $payment['net_amount'] ?? '';
         $status = $payment['status'] ?? '';
         $payment_session_id = $payment['payments_session_id'] ?? '';
 
