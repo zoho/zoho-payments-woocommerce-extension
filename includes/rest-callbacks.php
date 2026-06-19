@@ -146,6 +146,11 @@ if (!function_exists('zpay_webhook_handler')) {
 
         $settings = get_option('woocommerce_zpay_settings');
         $webhook_secret = isset($settings['w_signing_key']) ? zpay_decrypt_if_needed($settings['w_signing_key']) : '';
+        if (!is_string($webhook_secret) || trim($webhook_secret) === '') {
+            error_log('Webhook signing key is not set in the plugin settings');
+            return new WP_Error('missing_webhook_signing_key', 'Webhook signing key is not configured', array('status' => 401));
+        }
+
         $body = $request->get_body();
         $data = $timestamp . '.' . $body;
         $expected_signature = hash_hmac('sha256', $data, $webhook_secret);

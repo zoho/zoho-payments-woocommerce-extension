@@ -388,6 +388,7 @@ if (!class_exists('WC_ZPay')) {
                     'default' => '',
                     'description' => __('Obtained after configuring webhooks in Zoho Payments Dashboard > Settings > Developer Space > Webhooks.', ZOHO_PAYMENT_GATEWAY_DOMAIN),
                     'class' => 'zpay-sensitive-field',
+                    'custom_attributes' => array('required' => 'required'),
                 ),
                 'title' => array(
                     'title' => __('Title', ZOHO_PAYMENT_GATEWAY_DOMAIN),
