@@ -5,6 +5,10 @@ if (!defined('ABSPATH')) {
 
 // Handle disconnect connection form submission
 if (is_admin() && isset($_POST['zpay_disconnect'])) {
+    $referer = $_SERVER['HTTP_REFERER'] ?? '';
+    if (empty($referer) || strpos($referer, admin_url()) === false) {
+        return;
+    }
     error_log('Disconnecting Zoho - form submitted');
     $settings    = get_option('woocommerce_zpay_settings', []);
     $data_center = !empty($settings['data_center']) ? $settings['data_center'] : 'in';
