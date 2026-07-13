@@ -173,17 +173,18 @@ if (!function_exists('zpay_webhook_handler')) {
         }
 
         $payment_id = $payment['payment_id'] ?? '';
-        $amount = $payment['net_amount'] ?? '';
+        $amount = $payment['amount'] ?? '';
+        $total_fee_amount = $payment['total_fee_amount'] ?? '';
         $status = $payment['status'] ?? '';
         $payment_session_id = $payment['payments_session_id'] ?? '';
 
         if (!$order_id || !$payment_id || !$amount || !$status) {
-            return new WP_Error('missing_params', 'Required parameters missing', array('status' => 400));
+            return new WP_Error('missing_params', 'Required parameters missing', array('status' => 200));
         }
 
         $order = wc_get_order($order_id);
         if (!$order) {
-            return new WP_Error('order_not_found', 'Order not found', array('status' => 404));
+            return new WP_Error('order_not_found', 'Order not found', array('status' => 200));
         }
 
         if ($order->is_paid()) {
@@ -197,7 +198,9 @@ if (!function_exists('zpay_webhook_handler')) {
 
         $order_amount = floatval($order->get_total());
         if ($order_amount != floatval($amount)) {
-            return new WP_Error('amount_mismatch', 'Amount does not match order total', array('status' => 400));
+            if ($order_amount != floatval($amount) - floatval($total_fee_amount)) {
+                return new WP_Error('amount_mismatch', 'Amount does not match order total', array('status' => 400));
+            }
         }
 
         if ($event_type === 'payment.succeeded' && $status === 'succeeded') {
