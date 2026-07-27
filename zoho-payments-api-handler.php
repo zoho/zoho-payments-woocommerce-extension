@@ -322,7 +322,7 @@ class ZohoPayAPIHandler
 
 
     // FN5 - Verify Payment after return from Zoho
-    function verifyPayment($user_details, $order_id, $payment_session_id)
+    function verifyPayment($user_details, $payment_session_id)
     {
         error_log("Verify payments fn started ---");
         $options = [

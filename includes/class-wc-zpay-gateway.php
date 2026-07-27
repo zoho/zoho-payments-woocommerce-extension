@@ -212,7 +212,6 @@ if (!class_exists('WC_ZPay')) {
                                 const data = await instance.requestPaymentMethod(options);
                                 if (data && data.payment_id && data.signature) {
                                     let body = {
-                                        order_id: '<?php echo esc_js($order_id); ?>',
                                         payment_id: data.payment_id,
                                         payment_session_id: "<?php echo esc_js($payment_result); ?>",
                                         signature: data.signature

@@ -41,13 +41,12 @@ if (!function_exists('zpay_register_rest_routes')) {
 if (!function_exists('zpay_payment_callback')) {
     function zpay_payment_callback(WP_REST_Request $request)
     {
-        $order_id = $request->get_param('order_id');
         $payment_id = $request->get_param('payment_id');
         $payment_session_id = $request->get_param('payment_session_id');
         $received_signature = $request->get_param('signature');
 
-        if (!$payment_id || !$order_id || !$payment_session_id || !$received_signature) {
-            return new WP_Error('missing_params', __('Payment ID, Payment Session ID, Order ID, and Signature are required', ZOHO_PAYMENT_GATEWAY_DOMAIN));
+        if (!$payment_id || !$payment_session_id || !$received_signature) {
+            return new WP_Error('missing_params', __('Payment ID, Payment Session ID, and Signature are required', ZOHO_PAYMENT_GATEWAY_DOMAIN));
         }
 
         $settings = get_option('woocommerce_zpay_settings');
@@ -67,13 +66,18 @@ if (!function_exists('zpay_payment_callback')) {
             error_log('Signature verified successfully');
         }
 
-        $order = wc_get_order($order_id);
         $gateway = new WC_ZPay();
         $user_details = $gateway->user_details;
         $api_handler = new ZohoPayAPIHandler();
-        $payment_result = $api_handler->verifyPayment($user_details, $order, $payment_session_id);
+        $payment_result = $api_handler->verifyPayment($user_details, $payment_session_id);
 
         error_log('Response from verifyPayment handle');
+
+        if (!is_array($payment_result) || empty($payment_result['order_id'])) {
+            return new WP_Error('order_not_found', __('Order not found', ZOHO_PAYMENT_GATEWAY_DOMAIN));
+        }
+
+        $order = wc_get_order($payment_result['order_id']);
 
         if (!$order) {
             return new WP_Error('order_not_found', __('Order not found', ZOHO_PAYMENT_GATEWAY_DOMAIN));
@@ -87,7 +91,7 @@ if (!function_exists('zpay_payment_callback')) {
                 return rest_ensure_response(['success' => false, 'redirect' => wc_get_cart_url()]);
             }
 
-            if ($payment_result['payment_id'] == $payment_id && $payment_result['order_id'] == $order_id && $payment_result['payment_session_id'] == $payment_session_id) {
+            if ($payment_result['payment_id'] == $payment_id && $payment_result['payment_session_id'] == $payment_session_id) {
                 $order_amount = floatval($order->get_total());
                 $paid_amount = (isset($payment_result['amount']) && is_numeric($payment_result['amount']))
                     ? floatval($payment_result['amount'])
