@@ -236,9 +236,6 @@ if (!class_exists('WC_ZPay')) {
                                 }
                             } catch (error) {
                                 const errorCode = (error && error.message) ? error.message : '';
-                                const clearSessionUrl = '<?php echo esc_url(rest_url('zpay/v1/clear_session')); ?>';
-                                const clearSessionHeaders = {'Content-Type': 'application/json', 'X-WP-Nonce': '<?php echo esc_js($zpay_nonce); ?>'};
-                                const clearSessionBody = JSON.stringify({order_id: '<?php echo esc_js($order_id); ?>'});
                                 const checkoutUrl = '<?php echo esc_url(wc_get_checkout_url()); ?>';
                                 const orderUrl = '<?php echo esc_url($order->get_view_order_url()); ?>';
 
@@ -246,16 +243,12 @@ if (!class_exists('WC_ZPay')) {
 
                                 if (errorCode === 'widget_closed') {
                                     // Customer cancelled — not an error, let them retry from checkout
-                                    fetch(clearSessionUrl, {method: 'POST', headers: clearSessionHeaders, body: clearSessionBody});
                                     window.location.href = checkoutUrl;
                                 } else if (errorCode === 'invalid_payment_session' || errorCode === 'session_expired') {
-                                    // Session is stale or exhausted — clear it so a new one is created on retry
-                                    await fetch(clearSessionUrl, {method: 'POST', headers: clearSessionHeaders, body: clearSessionBody}).catch(function () {});
                                     window.location.href = checkoutUrl;
                                 } else {
                                     // Unexpected error — log it and send customer to their order page
                                     console.error('Zoho Payments widget error:', errorCode, error);
-                                    fetch(clearSessionUrl, {method: 'POST', headers: clearSessionHeaders, body: clearSessionBody});
                                     window.location.href = orderUrl;
                                 }
                             } finally {
@@ -484,7 +477,6 @@ if (!class_exists('WC_ZPay')) {
 
                 add_action('woocommerce_store_api_checkout_order_processed', function ($order_id) {
                     $order = wc_get_order($order_id);
-                    $order->update_status('on_hold', __('Awaiting Zoho payment', ZOHO_PAYMENT_GATEWAY_DOMAIN));
                     $payment_result = $this->api_handler->complete_payment($order, $this->user_details);
                     if (is_wp_error($payment_result)) {
                         return;
@@ -505,7 +497,6 @@ if (!class_exists('WC_ZPay')) {
 
                 add_action('woocommerce_checkout_order_processed', function ($order_id) {
                     $order = wc_get_order($order_id);
-                    $order->update_status('on_hold', __('Awaiting Zoho payment', ZOHO_PAYMENT_GATEWAY_DOMAIN));
                     $payment_result = $this->api_handler->complete_payment($order, $this->user_details);
                     if (is_wp_error($payment_result)) {
                         return;

@@ -139,10 +139,6 @@ class ZohoPayAPIHandler
         if (isset($decodedResponse['payments_session']['payments_session_id'])) {
             $order->update_meta_data('zpay_payment_session_id', $decodedResponse['payments_session']['payments_session_id']);
             $order->update_meta_data('zpay_payment_session_expiry_time', $decodedResponse['payments_session']['expiry_time']);
-            // Change status from draft to on-hold if needed
-            if ($order->get_status() === 'draft') {
-                $order->update_status('on-hold', __('Awaiting Zoho payment', ZOHO_PAYMENT_GATEWAY_DOMAIN));
-            }
             $order->save();
         }
         return $decodedResponse;
@@ -225,30 +221,34 @@ class ZohoPayAPIHandler
     public function complete_payment($order, $user_details)
     {
         error_log('complete_payment fn started -----');
-        $access_token = $user_details['access_token'] ?? '';
+        $order_id = $order->get_id();
+        $api_handler = $this;
 
-        $auth_token_result = null;
+        return zpay_with_order_lock($order_id, function () use ($order_id, $user_details, $api_handler) {
+            $order = wc_get_order($order_id);
 
-        if ($access_token !== '' && $access_token !== null) {
-            $auth_token_result = $access_token;
-        } else {
-            $refresh_token = $user_details['refresh_token'];
-            //changed
-            if ($refresh_token !== '' && $refresh_token !== null) {
-                error_log('Refresh token is not empty');
-                $auth_token_result = $this->generateAccessTokenFromRefreshToken($user_details);
+            $access_token = $user_details['access_token'] ?? '';
+            $auth_token_result = null;
 
+            if ($access_token !== '' && $access_token !== null) {
+                $auth_token_result = $access_token;
             } else {
-                error_log('Refresh token is empty');
+                $refresh_token = $user_details['refresh_token'];
+                if ($refresh_token !== '' && $refresh_token !== null) {
+                    error_log('Refresh token is not empty');
+                    $auth_token_result = $this->generateAccessTokenFromRefreshToken($user_details);
+                } else {
+                    error_log('Refresh token is empty');
+                }
             }
-        }
 
-        if (is_wp_error($auth_token_result)) {
-            $order->add_order_note('Auth Call failed: ' . $auth_token_result->get_error_message());
-            return $auth_token_result;
-        }
+            if (is_wp_error($auth_token_result)) {
+                $order->add_order_note('Auth Call failed: ' . $auth_token_result->get_error_message());
+                return $auth_token_result;
+            }
 
-        return $this->tryPaymentSession($order, $user_details, 1, $auth_token_result);
+            return $api_handler->tryPaymentSession($order, $user_details, 1, $auth_token_result);
+        });
     }
 
     // FN4 - Try Payment Session with Retry Logic
@@ -321,43 +321,81 @@ class ZohoPayAPIHandler
     }
 
 
+    private function doVerifyRequest($url, $access_token)
+    {
+        $options = [
+            'http' => [
+                'header' => "Authorization: Zoho-oauthtoken " . $access_token,
+                'method' => 'GET',
+                'ignore_errors' => true,
+            ],
+        ];
+        $context  = stream_context_create($options);
+        $response = file_get_contents($url, false, $context);
+
+        if ($response === false) {
+            $last_error = error_get_last();
+            return new WP_Error('retrieve_error', __($last_error['message'] ?? 'Unknown error', ZOHO_PAYMENT_GATEWAY_DOMAIN));
+        }
+
+        return json_decode($response, true) ?? [];
+    }
+
     // FN5 - Verify Payment after return from Zoho
     function verifyPayment($user_details, $payment_session_id)
     {
         error_log("Verify payments fn started ---");
-        $options = [
-            'http' => [
-                'header' => "Authorization: Zoho-oauthtoken " . $user_details['access_token'],
-                'method' => 'GET'
-            ],
-        ];
-        $context = stream_context_create($options);
+
+        $access_token = $user_details['access_token'] ?? '';
+        if (empty($access_token)) {
+            $access_token = $this->generateAccessTokenFromRefreshToken($user_details);
+            if (is_wp_error($access_token)) {
+                return $access_token;
+            }
+        }
+
         $payments_api_base_url = $this->getApiBaseUrl('payments', $user_details);
         if (is_wp_error($payments_api_base_url)) {
             return $payments_api_base_url;
         }
         $url = $payments_api_base_url . '/api/v1/paymentsessions/' . $payment_session_id . '?account_id=' . $user_details['account_id'];
 
-        $response = file_get_contents($url, false, $context);
-
-        if ($response === FALSE) {
-            $last_error = error_get_last();
-            return new WP_Error('Retreive Error', __($last_error['message'], ZOHO_PAYMENT_GATEWAY_DOMAIN));
+        $decodedResponse = $this->doVerifyRequest($url, $access_token);
+        if (is_wp_error($decodedResponse)) {
+            return $decodedResponse;
         }
 
-        $decodedResponse = json_decode($response, true);
-        if (isset($decodedResponse['error'])) {
-            return new WP_Error('Error', __($decodedResponse['error'], ZOHO_PAYMENT_GATEWAY_DOMAIN));
+        if (($decodedResponse['code'] ?? '') === 'error' && stripos((string) ($decodedResponse['message'] ?? ''), 'authorized') !== false) {
+            $access_token = $this->generateAccessTokenFromRefreshToken($user_details);
+            if (is_wp_error($access_token)) {
+                return $access_token;
+            }
+            $decodedResponse = $this->doVerifyRequest($url, $access_token);
+            if (is_wp_error($decodedResponse)) {
+                return $decodedResponse;
+            }
+        }
+
+        if (($decodedResponse['code'] ?? '') === 'error') {
+            return new WP_Error('verify_error', __($decodedResponse['message'] ?? 'Unknown error', ZOHO_PAYMENT_GATEWAY_DOMAIN));
+        }
+
+        $order_id = '';
+        foreach ($decodedResponse['payments_session']['meta_data'] ?? [] as $meta) {
+            if (isset($meta['key']) && $meta['key'] === 'order_id') {
+                $order_id = $meta['value'];
+                break;
+            }
         }
 
         return array(
-            'status' => isset($decodedResponse['message']) ? $decodedResponse['message'] : '',
-            'payment_session_status' => isset($decodedResponse['payments_session']['status']) ? $decodedResponse['payments_session']['status'] : '',
-            'payment_id' => isset($decodedResponse['payments_session']['payments'][0]['payment_id']) ? $decodedResponse['payments_session']['payments'][0]['payment_id'] : '',
-            'payment_session_id' => $payment_session_id,
-            'amount' => isset($decodedResponse['payments_session']['amount']) ? $decodedResponse['payments_session']['amount'] : '',
-            'order_id' => isset($decodedResponse['payments_session']['meta_data'][0]['value']) ? $decodedResponse['payments_session']['meta_data'][0]['value'] : ''
-
+            'status'                 => $decodedResponse['message'] ?? '',
+            'payment_session_status' => $decodedResponse['payments_session']['status'] ?? '',
+            'payment_id'             => $decodedResponse['payments_session']['payments'][0]['payment_id'] ?? '',
+            'payment_session_id'     => $payment_session_id,
+            'amount'                 => $decodedResponse['payments_session']['amount'] ?? '',
+            'order_id'               => $order_id,
+            'currency'               => $decodedResponse['payments_session']['currency'] ?? '',
         );
     }
 }

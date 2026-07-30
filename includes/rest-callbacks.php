@@ -28,13 +28,6 @@ if (!function_exists('zpay_register_rest_routes')) {
             ));
         });
 
-        add_action('rest_api_init', function () {
-            register_rest_route('zpay/v1', '/clear_session', array(
-                'methods' => 'POST',
-                'callback' => 'zpay_clear_session_callback',
-                'permission_callback' => '__return_true'
-            ));
-        });
     }
 }
 
@@ -83,6 +76,25 @@ if (!function_exists('zpay_payment_callback')) {
             return new WP_Error('order_not_found', __('Order not found', ZOHO_PAYMENT_GATEWAY_DOMAIN));
         }
 
+        $currency = $order->get_currency();
+        if ($currency !== $payment_result['currency']) {
+            return new WP_Error('currency_mismatch', __('Order not found', ZOHO_PAYMENT_GATEWAY_DOMAIN));
+        }
+
+        $stored_session = $order->get_meta('zpay_payment_session_id', true);
+        if (!$stored_session || !hash_equals($stored_session, $payment_session_id)) {
+            error_log('Session ID mismatch for order ' . $payment_result['order_id']);
+            return new WP_Error('order_not_found', __('Order not found', ZOHO_PAYMENT_GATEWAY_DOMAIN));
+        }
+
+        if ($order->is_paid()) {
+            return rest_ensure_response(['success' => true,'redirect' => $order->get_checkout_order_received_url(),]);
+        }
+
+        if (!$order->needs_payment()) {
+            return new WP_Error('order_not_found', __('Order not found', ZOHO_PAYMENT_GATEWAY_DOMAIN));
+        }
+
         if (is_array($payment_result) && isset($payment_result['status']) && $payment_result['status'] === 'success') {
             if (!isset($payment_result['payment_session_status']) || $payment_result['payment_session_status'] !== 'succeeded') {
                 error_log('Payment session is not succeeded. Status: ' . ($payment_result['payment_session_status'] ?? 'missing'));
@@ -91,7 +103,7 @@ if (!function_exists('zpay_payment_callback')) {
                 return rest_ensure_response(['success' => false, 'redirect' => wc_get_cart_url()]);
             }
 
-            if ($payment_result['payment_id'] == $payment_id && $payment_result['payment_session_id'] == $payment_session_id) {
+            if ($payment_result['payment_id'] === $payment_id && $payment_result['payment_session_id'] === $payment_session_id) {
                 $order_amount = floatval($order->get_total());
                 $paid_amount = (isset($payment_result['amount']) && is_numeric($payment_result['amount']))
                     ? floatval($payment_result['amount'])
@@ -108,7 +120,6 @@ if (!function_exists('zpay_payment_callback')) {
                     $order->add_order_note(sprintf(__('Payment verified via Zoho Payments session %s Payment ID: %s', ZOHO_PAYMENT_GATEWAY_DOMAIN), $payment_result['payment_session_id'], $payment_result['payment_id']));
                     $order->update_meta_data('payment_id', $payment_id);
                     $order->payment_complete($payment_id);
-                    $order->update_status('processing', __('Payment processed', ZOHO_PAYMENT_GATEWAY_DOMAIN));
                     $order->save();
                     return rest_ensure_response(['success' => true, 'redirect' => $order->get_checkout_order_received_url()]);
                 } else {
@@ -182,7 +193,7 @@ if (!function_exists('zpay_webhook_handler')) {
         $status = $payment['status'] ?? '';
         $payment_session_id = $payment['payments_session_id'] ?? '';
 
-        if (!$order_id || !$payment_id || !$amount || !$status) {
+        if (!$order_id || !$payment_id || !$amount || !$status || !$payment_session_id) {
             return new WP_Error('missing_params', 'Required parameters missing', array('status' => 200));
         }
 
@@ -191,54 +202,42 @@ if (!function_exists('zpay_webhook_handler')) {
             return new WP_Error('order_not_found', 'Order not found', array('status' => 200));
         }
 
-        if ($order->is_paid()) {
-            return rest_ensure_response(['success' => true, 'message' => 'Order already paid']);
+        $currency = $order->get_currency();
+        if ($currency !== $payment['currency']) {
+            return new WP_Error('currency_mismatch', 'Currency mismatch', array('status' => 200));
         }
 
-        $current_status = $order->get_status();
-        if (in_array($current_status, ['processing', 'completed'])) {
-            return rest_ensure_response(['success' => true, 'message' => 'Order payment status already updated']);
+        $stored_session = $order->get_meta('zpay_payment_session_id', true);
+        if (!$stored_session || !hash_equals($stored_session, $payment_session_id)) {
+            error_log('Webhook session ID mismatch for order ' . $order_id);
+            return new WP_Error('order_not_found', 'Order not found', array('status' => 200));
         }
 
-        $order_amount = floatval($order->get_total());
-        if ($order_amount != floatval($amount)) {
-            if ($order_amount != floatval($amount) - floatval($total_fee_amount)) {
-                return new WP_Error('amount_mismatch', 'Amount does not match order total', array('status' => 400));
-            }
+        if (!$order->needs_payment()) {
+            return rest_ensure_response(['success' => true, 'message' => 'Order not found']);
         }
 
         if ($event_type === 'payment.succeeded' && $status === 'succeeded') {
+            $order_amount = floatval($order->get_total());
+            if ($order_amount != floatval($amount)) {
+                if ($order_amount != floatval($amount) - floatval($total_fee_amount)) {
+                    return new WP_Error('amount_mismatch', 'Amount does not match order total', array('status' => 400));
+                }
+            }
             $order->payment_complete($payment_id);
             $order->add_order_note('Payment completed via Zoho Payments Webhook. Payment ID: ' . $payment_id);
             $order->set_transaction_id($payment_session_id);
             $order->save();
             return rest_ensure_response(['success' => true, 'message' => 'Order payment updated']);
-        } else {
-            $order->update_status('failed', 'Zoho Payments Webhook reported payment failure.');
+        }
+
+        if ($event_type === 'payment.failed' && $status === 'failed') {
+            $order->update_status('failed', __('Payment failed', ZOHO_PAYMENT_GATEWAY_DOMAIN));
             $order->save();
-            return rest_ensure_response(['success' => false, 'message' => 'Payment failed']);
-        }
-    }
-}
-
-if (!function_exists('zpay_clear_session_callback')) {
-    function zpay_clear_session_callback(WP_REST_Request $request)
-    {
-        $nonce = $request->get_header('X-WP-Nonce');
-        if (!wp_verify_nonce($nonce, 'wp_rest')) {
-            return new WP_Error('unauthorized', 'Invalid nonce', array('status' => 403));
+            return rest_ensure_response(['success' => true, 'message' => 'Order payment failed']);
         }
 
-        $order_id = $request->get_param('order_id');
-        $order = wc_get_order($order_id);
-
-        if ($order) {
-            $order->update_meta_data('zpay_payment_session_id', null);
-            $order->set_transaction_id(null);
-            $order->save();
-            return rest_ensure_response(['success' => true]);
-        }
-        return new WP_Error('order_not_found', 'Order not found', array('status' => 404));
+        return rest_ensure_response(['success' => true, 'message' => 'Event received']);
     }
 }
 

@@ -13,7 +13,7 @@ https://github.com/zoho/zoho-payments-woocommerce-extension/releases/latest
 On the release page, download the attached plugin ZIP asset named:
 
 ```text
-zoho-payments-woocommerce-v1.0.5.zip
+zoho-payments-woocommerce-v1.0.6.zip
 ```
 
 ## Overview
@@ -22,7 +22,7 @@ Zoho Payments for WooCommerce adds Zoho Payments as a payment gateway in your Wo
 
 ## Plugin Details
 
-- Version: `1.0.5`
+- Version: `1.0.6`
 - Requires WordPress: `5.8` or later
 - Tested up to WordPress: `6.5`
 
@@ -84,6 +84,16 @@ Copy the webhook signing key from Zoho Payments and save it in the plugin settin
 
 ## Changelog
 
+### 1.0.6
+
+- Prevented duplicate payment-session creation.
+- Strengthened payment callback and webhook validation with currency, payment-session, order state, and strict identifier checks.
+- Added automatic access-token refresh and retry when payment verification encounters an expired or unauthorized token.
+- Improved webhook event handling so only explicit success and failure events update order payment status.
+- Improved encryption-key handling and automatically migrated credentials.
+- Secured payment gateway disconnection.
+- Removed the client-accessible payment-session clearing flow to preserve server-side session integrity.
+
 ### 1.0.5
 
 - The order acted upon by the payment callback is now resolved from the payment session verified with Zoho, instead of the client-supplied `order_id`.
@@ -120,6 +130,10 @@ Initial stable release.
 - Added configurable checkout title, description, business name, and business description.
 
 ## Upgrade Notice
+
+### 1.0.6
+
+Payment-session integrity, callback and webhook validation, credential encryption, token refresh, and WooCommerce order-status handling have been improved. Upgrading is strongly recommended.
 
 ### 1.0.5
 

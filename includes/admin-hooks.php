@@ -4,11 +4,16 @@ if (!defined('ABSPATH')) {
 }
 
 // Handle disconnect connection form submission
-if (is_admin() && isset($_POST['zpay_disconnect'])) {
-    $referer = $_SERVER['HTTP_REFERER'] ?? '';
-    if (empty($referer) || strpos($referer, admin_url()) === false) {
+add_action('admin_init', function () {
+    if (!is_admin() || !isset($_POST['zpay_disconnect'])) {
         return;
     }
+
+    if (!current_user_can('manage_woocommerce')) {
+        return;
+    }
+    check_admin_referer('woocommerce-settings');
+
     error_log('Disconnecting Zoho - form submitted');
     $settings    = get_option('woocommerce_zpay_settings', []);
     $data_center = !empty($settings['data_center']) ? $settings['data_center'] : 'in';
@@ -32,10 +37,13 @@ if (is_admin() && isset($_POST['zpay_disconnect'])) {
     add_action('admin_notices', function () {
         echo '<div class="notice notice-success"><p>Zoho Payments disconnected successfully.</p></div>';
     });
-}
+});
 
 // Add admin scripts for the settings page
 add_action('admin_footer', function () {
+    if (!current_user_can('manage_woocommerce')) {
+        return;
+    }
     ?>
     <script>
         document.addEventListener("DOMContentLoaded", function () {
@@ -69,14 +77,6 @@ add_action('admin_enqueue_scripts', function ($hook) {
             true
         );
         wp_enqueue_style('dashicons');
-    }
-});
-
-// Ensure encryption key exists on plugin activation
-register_activation_hook(dirname(__FILE__) . '/../index.php', function () {
-    if (!get_option('zpay_encryption_key')) {
-        $key = bin2hex(random_bytes(32));
-        add_option('zpay_encryption_key', $key, '', 'no');
     }
 });
 
