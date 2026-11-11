@@ -63,7 +63,19 @@ if (!class_exists('WC_ZPay')) {
         {
             $data_center_key = $this->get_field_key('data_center');
             $sandbox_enabled_key = $this->get_field_key('sandbox_enabled');
-            $data_center = isset($_POST[$data_center_key]) ? wc_clean(wp_unslash($_POST[$data_center_key])) : 'in';
+            $previous_settings = get_option($this->get_option_key(), []);
+            $previous_data_center = zpay_sanitize_data_center($previous_settings['data_center'] ?? 'in');
+
+            $posted_data_center = isset($_POST[$data_center_key]) ? wc_clean(wp_unslash($_POST[$data_center_key])) : 'in';
+            $data_center = zpay_sanitize_data_center($posted_data_center, '');
+            if ($data_center === '') {
+                $data_center = $previous_data_center;
+                if (class_exists('WC_Admin_Settings')) {
+                    WC_Admin_Settings::add_error(__('Invalid Zoho Payments data center. The previous value has been kept.', ZOHO_PAYMENT_GATEWAY_DOMAIN));
+                }
+            }
+            $_POST[$data_center_key] = $data_center;
+
             $sandbox_enabled = isset($_POST[$sandbox_enabled_key]) ? 'yes' : 'no';
 
             if ($data_center !== 'in') {
@@ -71,9 +83,8 @@ if (!class_exists('WC_ZPay')) {
                 unset($_POST[$sandbox_enabled_key]);
             }
 
-            $previous_settings = get_option($this->get_option_key(), []);
             $previous_environment = [
-                'data_center' => $previous_settings['data_center'] ?? 'in',
+                'data_center' => $previous_data_center,
                 'sandbox_enabled' => $previous_settings['sandbox_enabled'] ?? 'no',
             ];
             $new_environment = [
@@ -283,14 +294,14 @@ if (!class_exists('WC_ZPay')) {
         {
             $client_id = zpay_decrypt_if_needed($this->get_option('client_id'));
             $redirect_uri = admin_url();
-            $data_center = $this->get_option('data_center');
+            $data_center = zpay_sanitize_data_center($this->get_option('data_center'));
             $sandbox_enabled = $this->get_option('sandbox_enabled', 'no') === 'yes';
             $accounts_data_center = $sandbox_enabled ? 'in' : $data_center;
             $scope_prefix = $sandbox_enabled ? 'ZohoPaySandbox' : 'ZohoPay';
             $scope = $scope_prefix . '.payments.CREATE,' . $scope_prefix . '.payments.READ,' . $scope_prefix . '.payments.UPDATE';
             $soid = $this->get_option('account_id');
             $soid_prefix = $sandbox_enabled ? 'zohopaysandbox' : 'zohopay';
-            $query = http_build_query(['response_type' => 'code', 'client_id' => $client_id, 'scope' => $scope, 'access_type' => 'offline', 'prompt' => 'consent', 'soid' => $soid_prefix . '.' . $soid, 'redirect_uri' => $redirect_uri]);
+            $query = http_build_query(['response_type' => 'code', 'client_id' => $client_id, 'scope' => $scope, 'access_type' => 'offline', 'prompt' => 'consent', 'soid' => $soid_prefix . '.' . $soid, 'redirect_uri' => $redirect_uri, 'state' => wp_create_nonce('zpay_oauth_connect')]);
             return "https://accounts.zoho.$accounts_data_center/oauth/v2/org/auth?$query";
         }
 
@@ -428,7 +439,7 @@ if (!class_exists('WC_ZPay')) {
             $this->account_id = ($this->get_option('account_id', ''));
             $this->business = $this->get_option('business');
             $this->business_desc = $this->get_option('business_desc');
-            $this->data_center = $this->get_option('data_center');
+            $this->data_center = zpay_sanitize_data_center($this->get_option('data_center'));
             $this->sandbox_enabled = $this->get_option('sandbox_enabled', 'no');
 
             $this->client_id = zpay_decrypt_if_needed($this->get_option('client_id', ''));
@@ -441,9 +452,16 @@ if (!class_exists('WC_ZPay')) {
 
             $this->createUserObject();
 
-            if (is_admin() && isset($_GET['code']) && !self::$oauth_processed) {
+            if (
+                is_admin()
+                && !wp_doing_ajax()
+                && isset($_GET['code'], $_GET['state'])
+                && !self::$oauth_processed
+                && current_user_can('manage_woocommerce')
+                && wp_verify_nonce(sanitize_text_field(wp_unslash($_GET['state'])), 'zpay_oauth_connect')
+            ) {
                 self::$oauth_processed = true;
-                $auth_code = sanitize_text_field($_GET['code']);
+                $auth_code = sanitize_text_field(wp_unslash($_GET['code']));
                 $url = "https://accounts.zoho." . $this->data_center . "/oauth/v2/token";
                 $body = ['grant_type' => 'authorization_code', 'client_id' => $this->client_id, 'client_secret' => $this->client_secret, 'redirect_uri' => admin_url(), 'code' => $auth_code];
                 $response = wp_remote_post($url, ['body' => $body]);
@@ -456,6 +474,7 @@ if (!class_exists('WC_ZPay')) {
                         update_option($this->get_option_key(), $settings);
                         $settings_url = admin_url('admin.php?page=wc-settings&tab=checkout&section=zpay');
                         wp_safe_redirect($settings_url);
+                        exit;
                     }
                 }
             }

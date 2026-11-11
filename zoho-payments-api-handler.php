@@ -15,17 +15,18 @@ class ZohoPayAPIHandler
     private function getApiBaseUrl($service, $user_details)
     {
         $sandbox_enabled = $this->isSandboxEnabled($user_details);
-        if ($sandbox_enabled && ($user_details['data_center'] ?? '') !== 'in') {
+        $data_center = zpay_sanitize_data_center($user_details['data_center'] ?? 'in');
+        if ($sandbox_enabled && $data_center !== 'in') {
             return new WP_Error('invalid_sandbox_region', __('Zoho Payments sandbox is only available for IN data center.', ZOHO_PAYMENT_GATEWAY_DOMAIN));
         }
 
         if ($service === 'accounts') {
-            return 'https://accounts.zoho.' . ($sandbox_enabled ? 'in' : $user_details['data_center']);
+            return 'https://accounts.zoho.' . ($sandbox_enabled ? 'in' : $data_center);
         }
 
         return $sandbox_enabled
             ? 'https://paymentssandbox.zoho.in'
-            : 'https://payments.zoho.' . $user_details['data_center'];
+            : 'https://payments.zoho.' . $data_center;
     }
 
     // FN1 - Create Payment Session

@@ -100,3 +100,18 @@ if (!function_exists('zpay_with_order_lock')) {
     }
 }
 
+
+if (!function_exists('zpay_allowed_data_centers')) {
+    function zpay_allowed_data_centers()
+    {
+        return ['in', 'com'];
+    }
+}
+
+if (!function_exists('zpay_sanitize_data_center')) {
+    function zpay_sanitize_data_center($data_center, $fallback = 'in')
+    {
+        $data_center = is_string($data_center) ? strtolower(trim($data_center)) : '';
+        return in_array($data_center, zpay_allowed_data_centers(), true) ? $data_center : $fallback;
+    }
+}

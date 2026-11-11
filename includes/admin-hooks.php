@@ -16,7 +16,7 @@ add_action('admin_init', function () {
 
     error_log('Disconnecting Zoho - form submitted');
     $settings    = get_option('woocommerce_zpay_settings', []);
-    $data_center = !empty($settings['data_center']) ? $settings['data_center'] : 'in';
+    $data_center = zpay_sanitize_data_center($settings['data_center'] ?? 'in');
     $revoke_url  = 'https://accounts.zoho.' . $data_center . '/oauth/v2/token/revoke';
 
     $refresh_token = !empty($settings['refresh_token']) ? zpay_decrypt_if_needed($settings['refresh_token']) : '';
