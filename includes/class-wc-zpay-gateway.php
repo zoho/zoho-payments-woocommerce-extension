@@ -121,6 +121,13 @@ if (!class_exists('WC_ZPay')) {
             return $value;
         }
 
+        private function is_zpay_order_payable($order)
+        {
+            return $order instanceof WC_Order
+                && $order->get_payment_method() === $this->id
+                && $this->enabled === 'yes';
+        }
+
         public function receipt_page($order_id)
         {
             static $executed = false;
@@ -130,6 +137,9 @@ if (!class_exists('WC_ZPay')) {
             $executed = true;
 
             $order = wc_get_order($order_id);
+            if (!$this->is_zpay_order_payable($order)) {
+                return;
+            }
             $payment_result = $this->api_handler->complete_payment($order, $this->user_details);
 
             if (is_wp_error($payment_result)) {
@@ -496,6 +506,9 @@ if (!class_exists('WC_ZPay')) {
 
                 add_action('woocommerce_store_api_checkout_order_processed', function ($order_id) {
                     $order = wc_get_order($order_id);
+                    if (!$this->is_zpay_order_payable($order)) {
+                        return;
+                    }
                     $payment_result = $this->api_handler->complete_payment($order, $this->user_details);
                     if (is_wp_error($payment_result)) {
                         return;
@@ -509,13 +522,11 @@ if (!class_exists('WC_ZPay')) {
                     }
                 }, 10, 4);
 
-                add_action('woocommerce_order_status_failed', function ($order_id) {
-                    $order = wc_get_order($order_id);
-                    $order->update_meta_data('zpay_payment_session_id', null);
-                });
-
                 add_action('woocommerce_checkout_order_processed', function ($order_id) {
                     $order = wc_get_order($order_id);
+                    if (!$this->is_zpay_order_payable($order)) {
+                        return;
+                    }
                     $payment_result = $this->api_handler->complete_payment($order, $this->user_details);
                     if (is_wp_error($payment_result)) {
                         return;

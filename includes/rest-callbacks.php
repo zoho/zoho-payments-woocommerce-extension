@@ -76,6 +76,11 @@ if (!function_exists('zpay_payment_callback')) {
             return new WP_Error('order_not_found', __('Order not found', ZOHO_PAYMENT_GATEWAY_DOMAIN));
         }
 
+        if ($order->get_payment_method() !== 'zpay') {
+            error_log('Payment callback rejected: order ' . $order->get_id() . ' is not a Zoho Payments order');
+            return new WP_Error('order_not_found', __('Order not found', ZOHO_PAYMENT_GATEWAY_DOMAIN));
+        }
+
         $currency = $order->get_currency();
         if ($currency !== $payment_result['currency']) {
             return new WP_Error('currency_mismatch', __('Order not found', ZOHO_PAYMENT_GATEWAY_DOMAIN));
@@ -199,6 +204,11 @@ if (!function_exists('zpay_webhook_handler')) {
 
         $order = wc_get_order($order_id);
         if (!$order) {
+            return new WP_Error('order_not_found', 'Order not found', array('status' => 200));
+        }
+
+        if ($order->get_payment_method() !== 'zpay') {
+            error_log('Webhook rejected: order ' . $order->get_id() . ' is not a Zoho Payments order');
             return new WP_Error('order_not_found', 'Order not found', array('status' => 200));
         }
 

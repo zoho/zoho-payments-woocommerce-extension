@@ -222,6 +222,9 @@ class ZohoPayAPIHandler
     public function complete_payment($order, $user_details)
     {
         error_log('complete_payment fn started -----');
+        if (!$order instanceof WC_Order || $order->get_payment_method() !== 'zpay') {
+            return new WP_Error('zpay_invalid_payment_method', __('This order is not payable with Zoho Payments.', ZOHO_PAYMENT_GATEWAY_DOMAIN));
+        }
         $order_id = $order->get_id();
         $api_handler = $this;
 
